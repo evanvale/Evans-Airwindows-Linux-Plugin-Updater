@@ -52,4 +52,4 @@ Public domain. Do whatever you want with this.
 
 Script written by Claude AI.
 
-Downloads plugins from [baconpaul/airwin2rack](https://github.com/baconpaul/airwin2rack), which ports Chris Johnson's [Airwindows](https://www.airwindows.com/) audio plugins to Linux.
+Downloads plugins from [baconpaul/airwin2rack](https://github.com/baconpaul/airwin2rack), which combines all of Chris Johnson's [Airwindows](https://www.airwindows.com/) audio plugins into a single interface with classifications and a search function.
