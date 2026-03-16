@@ -10,7 +10,7 @@ This script is written to be as POSIX-friendly as possible, so it should work on
 
 - Downloads the latest Airwindows Consolidated plugin release from GitHub
 - Verifies checksums when available  
-- Extracts and overwrites both .clap and VST formats with newest version
+- Extracts and overwrites .clap plugin with newest version
 - Handles multiple plugin directory locations
 - Has fallbacks for all tools, so it should work on almost any Linux distro
 
