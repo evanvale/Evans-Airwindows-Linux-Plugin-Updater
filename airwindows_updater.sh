@@ -11,12 +11,17 @@ set -u
 #
 # First time setup:
 #   Edit PLUGIN_DIR below or set it as an environment variable
-#   Common locations: ~/.vst3, ~/.clap, ~/.vst, /usr/lib/vst3, /usr/lib/vst
+#   Common locations: ~/.clap, ~/.vst3, /usr/lib/clap, /usr/lib/vst3
 
 PLUGIN_DIR="${PLUGIN_DIR:-}"
 
 QUIET=0
 VERBOSE=0
+
+# -------- logging --------
+log()   { [ "$QUIET" -eq 0 ] && printf '[\033[32mSUCCESS\033[0m] %s\n' "$*"; }
+info()  { [ "$QUIET" -eq 0 ] && printf '[\033[1;37mINFO\033[0m] %s\n' "$*"; }
+error() { printf '[\033[31mERROR\033[0m] %s\n' "$*" >&2; }
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -27,25 +32,20 @@ while [ "$#" -gt 0 ]; do
             printf "Downloads and installs the latest Airwindows plugin pack\n\n"
             printf "Usage:\n"
             printf "  %s [-q] [-v] [-h]\n" "$0"
-            printf "  PLUGIN_DIR=~/.vst3 %s\n\n" "$0"
+            printf "  PLUGIN_DIR=~/.clap %s\n\n" "$0"
             printf "Options:\n"
             printf "  -q        Quiet mode (minimal output)\n"
             printf "  -v        Verbose mode (show command output)\n"
             printf "  -h, --help    Show this help message\n\n"
             printf "First time setup:\n"
             printf "  Edit PLUGIN_DIR in this script or set it as an environment variable\n"
-            printf "  Common locations: ~/.vst3, ~/.clap, /usr/lib/vst\n"
+            printf "  Common locations: ~/.clap, ~/.vst3, /usr/lib/clap, /usr/lib/vst3\n"
             exit 0
             ;;
         *) error "Unknown option: $1"; exit 1 ;;
     esac
     shift
 done
-
-# -------- logging --------
-log()   { [ "$QUIET" -eq 0 ] && printf '[\033[32mSUCCESS\033[0m] %s\n' "$*"; }
-info()  { [ "$QUIET" -eq 0 ] && printf '[\033[1;37mINFO\033[0m] %s\n' "$*"; }
-error() { printf '[\033[31mERROR\033[0m] %s\n' "$*" >&2; }
 
 # -------- status & traps --------
 status=0
@@ -63,22 +63,20 @@ if [ -z "$PLUGIN_DIR" ]; then
         fatal "PLUGIN_DIR not set. Set PLUGIN_DIR environment variable and rerun."
     else
         info "No plugin directory set. Common locations:"
-        info "  • ~/.vst3 (VST3 user plugins)"
-        info "  • ~/.vst (VST2 user plugins)"
         info "  • ~/.clap (CLAP user plugins)"
+        info "  • ~/.vst3 (VST3 user plugins)"
+        info "  • /usr/lib/clap (system-wide CLAP)"
         info "  • /usr/lib/vst3 (system-wide VST3)"
-        info "  • /usr/lib/vst (system-wide VST2)"
         info ""
         info "You can either:"
         info "  1. Set PLUGIN_DIR environment variable:"
-        info "     export PLUGIN_DIR=~/.vst3"
+        info "     export PLUGIN_DIR=~/.clap"
         info "  2. Edit this script and change PLUGIN_DIR at the top"
         info "  3. Enter a path now"
         printf "Enter plugin directory path (or press Enter to exit): "
         read -r answer
         if [ -n "$answer" ]; then
             PLUGIN_DIR="$answer"
-            # expand tilde if present
             case "$PLUGIN_DIR" in
                 \~) PLUGIN_DIR="$HOME" ;;
                 \~/*) PLUGIN_DIR="$HOME/${PLUGIN_DIR#\~/}" ;;
@@ -89,7 +87,6 @@ if [ -z "$PLUGIN_DIR" ]; then
     fi
 fi
 
-# Check if directory exists - if not, ask for the real path
 if [ ! -d "$PLUGIN_DIR" ]; then
     if [ "$QUIET" -eq 1 ]; then
         fatal "Plugin folder '$PLUGIN_DIR' not found. Please set PLUGIN_DIR to your actual plugin directory."
@@ -100,13 +97,10 @@ if [ ! -d "$PLUGIN_DIR" ]; then
         read -r new_path
         if [ -n "$new_path" ]; then
             PLUGIN_DIR="$new_path"
-            # expand tilde if present
             case "$PLUGIN_DIR" in
                 \~) PLUGIN_DIR="$HOME" ;;
                 \~/*) PLUGIN_DIR="$HOME/${PLUGIN_DIR#\~/}" ;;
             esac
-            
-            # Now check if this new path exists, offer to create it if not
             if [ ! -d "$PLUGIN_DIR" ]; then
                 printf "Directory '$PLUGIN_DIR' doesn't exist. Create it? [Y/n]: "
                 read -r answer
@@ -151,17 +145,14 @@ extract_zip() {
         if need_cmd "$cmd"; then
             case "$cmd" in
                 bsdtar)
-                    # bsdtar uses -x (extract), -f (file), -C (directory)
                     if bsdtar -xf "$file" -C "$dest"; then
                         log "Extraction completed using bsdtar"; return 0
                     else info "bsdtar failed, trying next extractor"; fi ;;
                 unzip)
-                    # unzip uses -q (quiet), -d (directory)
                     if unzip -q "$file" -d "$dest"; then
                         log "Extraction completed using unzip"; return 0
                     else info "unzip failed, trying next extractor"; fi ;;
                 7z|7za)
-                    # 7z uses x (extract with paths), -y (yes to all), -o (output dir, no space)
                     if [ "$VERBOSE" -eq 1 ]; then
                         if "$cmd" x -y -o"$dest" "$file"; then
                             log "Extraction completed using $cmd"; return 0
@@ -177,7 +168,6 @@ extract_zip() {
         fi
     done
     if need_cmd busybox && busybox unzip -h >/dev/null 2>&1; then
-        # busybox unzip uses same flags as regular unzip: -q (quiet), -d (directory)
         if busybox unzip -q "$file" -d "$dest"; then
             log "Extraction completed using busybox unzip"; return 0
         else
@@ -245,9 +235,10 @@ checksum_url="${url}.sha256"
 checksum_file="$TEMP_DIR/airwindows.sha256"
 if download "$checksum_url" "$checksum_file" >/dev/null 2>&1; then
     if need_cmd sha256sum && [ -s "$checksum_file" ]; then
-        # sha256sum: -c (check mode)
-        printf '%s  %s\n' "$(cat "$checksum_file")" "airwindows.zip" > "$TEMP_DIR/checksum_verify.txt"
-        if (cd "$TEMP_DIR" && sha256sum -c "checksum_verify.txt" >/dev/null 2>&1); then
+        # Read just the hash from the checksum file (handles both bare hash and sha256sum-style lines)
+        expected_hash=$(awk '{print $1}' "$checksum_file")
+        actual_hash=$(sha256sum "$zipfile" | awk '{print $1}')
+        if [ "$expected_hash" = "$actual_hash" ]; then
             log "Checksum verified"
         else
             info "Checksum mismatch, continuing anyway"
@@ -265,11 +256,9 @@ extract_zip "$zipfile" "$TEMP_DIR"
 
 # -------- move plugins --------
 clap_file=$(find "$TEMP_DIR" -name "Airwindows Consolidated.clap" -type f | head -n 1)
-so_file=$(find "$TEMP_DIR" -name "Airwindows Consolidated.so" -type f | head -n 1)
 mkdir -p "$PLUGIN_DIR"; installed=0
 
 [ -f "$clap_file" ] && cp "$clap_file" "$PLUGIN_DIR" && installed=$((installed+1))
-[ -f "$so_file" ] && cp "$so_file" "$PLUGIN_DIR" && installed=$((installed+1))
 
 [ "$installed" -gt 0 ] || fatal "No plugin files found"
-printf '[\033[32mSUCCESS\033[0m] Installed %s plugin files to %s\n' "$installed" "$PLUGIN_DIR"
+printf '[\033[32mSUCCESS\033[0m] Installed %s plugin file to %s\n' "$installed" "$PLUGIN_DIR"
