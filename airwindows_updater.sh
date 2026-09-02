@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -u
 
-# Evan's Airwindows Linux Plugin Updater v1.0
+# Evan's Airwindows Linux Plugin Updater v1.2
 # Downloads and installs the latest consolidated Airwindows plugin pack for Linux
 #
 # Usage: ./airwindows_updater.sh [-q] [-v] [-h]
@@ -28,7 +28,7 @@ while [ "$#" -gt 0 ]; do
         -q) QUIET=1 ;;
         -v) VERBOSE=1 ;;
         -h|--help)
-            printf "Evan's Airwindows Linux Plugin Updater v1.0\n"
+            printf "Evan's Airwindows Linux Plugin Updater v1.2\n"
             printf "Downloads and installs the latest Airwindows plugin pack\n\n"
             printf "Usage:\n"
             printf "  %s [-q] [-v] [-h]\n" "$0"
@@ -182,14 +182,14 @@ extract_zip() {
 # -------- GitHub API / HTML fallback --------
 url=""
 get_url_api() {
-    api_url="https://api.github.com/repos/baconpaul/airwin2rack/releases"
+    api_url="https://api.github.com/repos/baconpaul/airwin2rack/releases/tags/DAWPlugin"
     if need_cmd jq; then
         if need_cmd wget; then
             url=$(wget -q -O - --header="Accept: application/vnd.github+json" "$api_url" \
-                | jq -r '.[]?.assets[]?.browser_download_url? // empty | select(test("Linux\\.zip"))' | head -n 1)
+                | jq -r '.assets[]?.browser_download_url? // empty | select(test("Linux\\.zip"))' | head -n 1)
         elif need_cmd curl; then
             url=$(curl -s -H "Accept: application/vnd.github+json" "$api_url" \
-                | jq -r '.[]?.assets[]?.browser_download_url? // empty | select(test("Linux\\.zip"))' | head -n 1)
+                | jq -r '.assets[]?.browser_download_url? // empty | select(test("Linux\\.zip"))' | head -n 1)
         fi
         [ -n "$url" ] && log "Download URL found via API (jq)" || info "jq failed, trying fallback"
     else
@@ -206,11 +206,13 @@ get_url_api() {
 }
 get_url_html() {
     if need_cmd wget; then
-        wget -q -O - https://github.com/baconpaul/airwin2rack/releases \
-            | grep -o 'https://github.com/[^"]*Linux\.zip' | head -n 1
+        wget -q -O - https://github.com/baconpaul/airwin2rack/releases/tag/DAWPlugin \
+            | grep -o '/baconpaul/airwin2rack/[^"]*Linux\.zip' | head -n 1 \
+            | sed 's|^|https://github.com|'
     elif need_cmd curl; then
-        curl -s https://github.com/baconpaul/airwin2rack/releases \
-            | grep -o 'https://github.com/[^"]*Linux\.zip' | head -n 1
+        curl -s https://github.com/baconpaul/airwin2rack/releases/tag/DAWPlugin \
+            | grep -o '/baconpaul/airwin2rack/[^"]*Linux\.zip' | head -n 1 \
+            | sed 's|^|https://github.com|'
     fi
 }
 
@@ -229,26 +231,6 @@ if [ ! -f "$zipfile" ] || [ ! -s "$zipfile" ]; then
     fatal "Download failed or empty file"
 fi
 log "Download verification: OK"
-
-# -------- checksum --------
-checksum_url="${url}.sha256"
-checksum_file="$TEMP_DIR/airwindows.sha256"
-if download "$checksum_url" "$checksum_file" >/dev/null 2>&1; then
-    if need_cmd sha256sum && [ -s "$checksum_file" ]; then
-        # Read just the hash from the checksum file (handles both bare hash and sha256sum-style lines)
-        expected_hash=$(awk '{print $1}' "$checksum_file")
-        actual_hash=$(sha256sum "$zipfile" | awk '{print $1}')
-        if [ "$expected_hash" = "$actual_hash" ]; then
-            log "Checksum verified"
-        else
-            info "Checksum mismatch, continuing anyway"
-        fi
-    else
-        info "Checksum empty or sha256sum missing, skipping"
-    fi
-else
-    info "No checksum published, skipping"
-fi
 
 # -------- extract --------
 info "Extracting plugins..."
