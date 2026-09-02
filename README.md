@@ -9,7 +9,6 @@ This script is written to be as POSIX-friendly as possible, so it should work on
 ## What it does
 
 - Downloads the latest Airwindows Consolidated plugin release from GitHub
-- Verifies checksums when available  
 - Extracts and overwrites .clap plugin with newest version
 - Handles multiple plugin directory locations
 - Has fallbacks for all tools, so it should work on almost any Linux distro
@@ -42,7 +41,6 @@ export PLUGIN_DIR=~/.vst3
 
 **Optional:**
 - `jq` for faster GitHub API parsing
-- `sha256sum` for checksum verification
 
 ## License
 
