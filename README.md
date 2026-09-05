@@ -23,7 +23,7 @@ chmod +x airwindows_updater.sh
 ./airwindows_updater.sh
 
 # Or set your plugin directory first
-export PLUGIN_DIR=~/.vst3
+export PLUGIN_DIR=~/.clap
 ./airwindows_updater.sh
 ```
 
