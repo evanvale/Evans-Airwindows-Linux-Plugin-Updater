@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -u
 
-# Evan's Airwindows Linux Plugin Updater v1.2
+# Evan's Airwindows Linux Plugin Updater v1.3
 # Downloads and installs the latest consolidated Airwindows plugin pack for Linux
 #
 # Usage: ./airwindows_updater.sh [-q] [-v] [-h]
@@ -11,12 +11,21 @@ set -u
 #
 # First time setup:
 #   Edit PLUGIN_DIR below or set it as an environment variable
-#   Common locations: ~/.clap, ~/.vst3, /usr/lib/clap, /usr/lib/vst3
+#   Common CLAP locations: ~/.clap, /usr/lib/clap
 
 PLUGIN_DIR="${PLUGIN_DIR:-}"
 
 QUIET=0
 VERBOSE=0
+
+# -------- path helper --------
+expand_path() {
+    case "$1" in
+        \~) printf '%s\n' "$HOME" ;;
+        \~/*) printf '%s/%s\n' "$HOME" "${1#\~/}" ;;
+        *) printf '%s\n' "$1" ;;
+    esac
+}
 
 # -------- logging --------
 log()   { [ "$QUIET" -eq 0 ] && printf '[\033[32mSUCCESS\033[0m] %s\n' "$*"; }
@@ -28,7 +37,7 @@ while [ "$#" -gt 0 ]; do
         -q) QUIET=1 ;;
         -v) VERBOSE=1 ;;
         -h|--help)
-            printf "Evan's Airwindows Linux Plugin Updater v1.2\n"
+            printf "Evan's Airwindows Linux Plugin Updater v1.3\n"
             printf "Downloads and installs the latest Airwindows plugin pack\n\n"
             printf "Usage:\n"
             printf "  %s [-q] [-v] [-h]\n" "$0"
@@ -39,13 +48,16 @@ while [ "$#" -gt 0 ]; do
             printf "  -h, --help    Show this help message\n\n"
             printf "First time setup:\n"
             printf "  Edit PLUGIN_DIR in this script or set it as an environment variable\n"
-            printf "  Common locations: ~/.clap, ~/.vst3, /usr/lib/clap, /usr/lib/vst3\n"
+            printf "  Common CLAP locations: ~/.clap, /usr/lib/clap\n"
             exit 0
             ;;
         *) error "Unknown option: $1"; exit 1 ;;
     esac
     shift
 done
+
+# Expand static or environment PLUGIN_DIR
+[ -n "$PLUGIN_DIR" ] && PLUGIN_DIR=$(expand_path "$PLUGIN_DIR")
 
 # -------- status & traps --------
 status=0
@@ -62,11 +74,9 @@ if [ -z "$PLUGIN_DIR" ]; then
     if [ "$QUIET" -eq 1 ]; then
         fatal "PLUGIN_DIR not set. Set PLUGIN_DIR environment variable and rerun."
     else
-        info "No plugin directory set. Common locations:"
-        info "  • ~/.clap (CLAP user plugins)"
-        info "  • ~/.vst3 (VST3 user plugins)"
+        info "No plugin directory set. Common CLAP locations:"
+        info "  • ~/.clap (user CLAP plugins)"
         info "  • /usr/lib/clap (system-wide CLAP)"
-        info "  • /usr/lib/vst3 (system-wide VST3)"
         info ""
         info "You can either:"
         info "  1. Set PLUGIN_DIR environment variable:"
@@ -76,11 +86,7 @@ if [ -z "$PLUGIN_DIR" ]; then
         printf "Enter plugin directory path (or press Enter to exit): "
         read -r answer
         if [ -n "$answer" ]; then
-            PLUGIN_DIR="$answer"
-            case "$PLUGIN_DIR" in
-                \~) PLUGIN_DIR="$HOME" ;;
-                \~/*) PLUGIN_DIR="$HOME/${PLUGIN_DIR#\~/}" ;;
-            esac
+            PLUGIN_DIR=$(expand_path "$answer")
         else
             fatal "Please set PLUGIN_DIR and rerun"
         fi
@@ -89,23 +95,18 @@ fi
 
 if [ ! -d "$PLUGIN_DIR" ]; then
     if [ "$QUIET" -eq 1 ]; then
-        fatal "Plugin folder '$PLUGIN_DIR' not found. Please set PLUGIN_DIR to your actual plugin directory."
+        fatal "Plugin folder '$PLUGIN_DIR' not found."
     else
-        info "Directory '$PLUGIN_DIR' doesn't exist (this is likely the default example path)"
-        info "Tip: edit PLUGIN_DIR in this script to avoid this prompt next time"
+        info "Directory '$PLUGIN_DIR' doesn't exist."
         printf "Enter your actual plugin directory path: "
         read -r new_path
         if [ -n "$new_path" ]; then
-            PLUGIN_DIR="$new_path"
-            case "$PLUGIN_DIR" in
-                \~) PLUGIN_DIR="$HOME" ;;
-                \~/*) PLUGIN_DIR="$HOME/${PLUGIN_DIR#\~/}" ;;
-            esac
+            PLUGIN_DIR=$(expand_path "$new_path")
             if [ ! -d "$PLUGIN_DIR" ]; then
                 printf "Directory '$PLUGIN_DIR' doesn't exist. Create it? [Y/n]: "
                 read -r answer
                 if [ "$answer" != "n" ] && [ "$answer" != "N" ]; then
-                    mkdir -p "$PLUGIN_DIR" || fatal "Failed to create directory"
+                    mkdir -p "$PLUGIN_DIR" || fatal "Failed to create directory $PLUGIN_DIR"
                     log "Created plugin directory: $PLUGIN_DIR"
                 else
                     fatal "Cannot proceed without plugin directory"
@@ -125,16 +126,21 @@ need_cmd() { command -v "$1" >/dev/null 2>&1; }
 download() {
     url=$1; outfile=$2
     if need_cmd wget; then
-        [ "$VERBOSE" -eq 1 ] && wget "$url" -O "$outfile" || wget -q "$url" -O "$outfile"
-        log "Download completed using wget"
-    else
-        info "wget not found, trying curl"
-        if need_cmd curl; then
-            [ "$VERBOSE" -eq 1 ] && curl -L "$url" -o "$outfile" || curl -L -s "$url" -o "$outfile"
-            log "Download completed using curl"
+        if [ "$VERBOSE" -eq 1 ]; then
+            wget "$url" -O "$outfile" || fatal "wget download failed"
         else
-            fatal "No downloader found (wget or curl)."
+            wget -q "$url" -O "$outfile" || fatal "wget download failed"
         fi
+        log "Download completed using wget"
+    elif need_cmd curl; then
+        if [ "$VERBOSE" -eq 1 ]; then
+            curl -L "$url" -o "$outfile" || fatal "curl download failed"
+        else
+            curl -L -s "$url" -o "$outfile" || fatal "curl download failed"
+        fi
+        log "Download completed using curl"
+    else
+        fatal "No downloader found (wget or curl)."
     fi
 }
 
@@ -237,10 +243,14 @@ info "Extracting plugins..."
 extract_zip "$zipfile" "$TEMP_DIR"
 
 # -------- move plugins --------
-clap_file=$(find "$TEMP_DIR" -name "Airwindows Consolidated.clap" -type f | head -n 1)
-mkdir -p "$PLUGIN_DIR"; installed=0
+clap_file=$(find "$TEMP_DIR" -name "Airwindows Consolidated.clap" | head -n 1)
 
-[ -f "$clap_file" ] && cp "$clap_file" "$PLUGIN_DIR" && installed=$((installed+1))
+[ -n "$clap_file" ] || fatal "Airwindows Consolidated.clap not found in downloaded zip"
 
-[ "$installed" -gt 0 ] || fatal "No plugin files found"
-printf '[\033[32mSUCCESS\033[0m] Installed %s plugin file to %s\n' "$installed" "$PLUGIN_DIR"
+mkdir -p "$PLUGIN_DIR" || fatal "Failed to ensure plugin directory exists: $PLUGIN_DIR"
+
+if cp -r "$clap_file" "$PLUGIN_DIR/"; then
+    log "Installed Airwindows Consolidated.clap to $PLUGIN_DIR"
+else
+    fatal "Failed to copy $clap_file to $PLUGIN_DIR (check permissions or disk space)"
+fi
